@@ -363,6 +363,73 @@ static int static_nexthop_srv6_encap_behavior_destroy(struct nb_cb_destroy_args 
 	return NB_OK;
 }
 
+static int static_nexthop_srv6_encap_source_modify(struct nb_cb_modify_args *args)
+{
+	struct static_nexthop *nh;
+	struct in6_addr old_encap_source, new_encap_source;
+
+	switch (args->event) {
+	case NB_EV_VALIDATE:
+		yang_dnode_get_ipv6(&new_encap_source, args->dnode, NULL);
+
+		if (IN6_IS_ADDR_UNSPECIFIED(&new_encap_source)) {
+			snprintf(args->errmsg, args->errmsg_len,
+				 "%% Tunsrc cannot be empty ('::')");
+			return NB_ERR_VALIDATION;
+		}
+		if (IN6_IS_ADDR_LOOPBACK(&new_encap_source)) {
+			snprintf(args->errmsg, args->errmsg_len,
+				 "%% Tunsrc cannot be loopback");
+			return NB_ERR_VALIDATION;
+		}
+		if (IN6_IS_ADDR_MULTICAST(&new_encap_source)) {
+			snprintf(args->errmsg, args->errmsg_len,
+				 "%% Tunsrc cannot be multicast");
+			return NB_ERR_VALIDATION;
+		}
+		break;
+	case NB_EV_PREPARE:
+	case NB_EV_ABORT:
+		break;
+	case NB_EV_APPLY:
+		nh = nb_running_get_entry(args->dnode, NULL, true);
+
+		yang_dnode_get_ipv6(&new_encap_source, args->dnode, NULL);
+		IPV6_ADDR_COPY(&old_encap_source, &nh->snh_seg.encap_source);
+		IPV6_ADDR_COPY(&nh->snh_seg.encap_source, &new_encap_source);
+
+		if (!IPV6_ADDR_SAME(&old_encap_source, &nh->snh_seg.encap_source))
+			nh->state = STATIC_START;
+		break;
+	}
+
+	return NB_OK;
+}
+
+static int static_nexthop_srv6_encap_source_destroy(struct nb_cb_destroy_args *args)
+{
+	struct static_nexthop *nh;
+	struct in6_addr old_encap_source;
+
+	switch (args->event) {
+	case NB_EV_VALIDATE:
+	case NB_EV_PREPARE:
+	case NB_EV_ABORT:
+		break;
+	case NB_EV_APPLY:
+		nh = nb_running_get_entry(args->dnode, NULL, true);
+
+		IPV6_ADDR_COPY(&old_encap_source, &nh->snh_seg.encap_source);
+		IPV6_ADDR_COPY(&nh->snh_seg.encap_source, &in6addr_any);
+
+		if (!IPV6_ADDR_SAME(&old_encap_source, &nh->snh_seg.encap_source))
+			nh->state = STATIC_START;
+		break;
+	}
+
+	return NB_OK;
+}
+
 static int nexthop_mpls_label_stack_entry_create(struct nb_cb_create_args *args)
 {
 	struct static_nexthop *nh;
@@ -968,6 +1035,22 @@ int routing_control_plane_protocols_control_plane_protocol_staticd_route_list_pa
 		break;
 	}
 	return NB_OK;
+}
+
+/*
+ * XPath:
+ * /frr-routing:routing/control-plane-protocols/control-plane-protocol/frr-staticd:staticd/route-list/path-list/frr-nexthops/nexthop/srv6-segs-stack/encap-source
+ */
+int routing_control_plane_protocols_control_plane_protocol_staticd_route_list_path_list_frr_nexthops_nexthop_srv6_segs_stack_encap_source_modify(
+	struct nb_cb_modify_args *args)
+{
+	return static_nexthop_srv6_encap_source_modify(args);
+}
+
+int routing_control_plane_protocols_control_plane_protocol_staticd_route_list_path_list_frr_nexthops_nexthop_srv6_segs_stack_encap_source_destroy(
+	struct nb_cb_destroy_args *args)
+{
+	return static_nexthop_srv6_encap_source_destroy(args);
 }
 
 /*
